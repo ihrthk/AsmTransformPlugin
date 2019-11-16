@@ -1,0 +1,97 @@
+task hello1 {
+    doLast {
+
+        def numList = [1, 2, 3, 4, 5, 6]
+        println numList
+
+        def map = ['width': 1024, 'height': 768]
+        println map
+
+        eachMap { k, v ->
+            println "${k} is ${v}"
+
+        }
+
+        println getLocalProperties("sdk.dir", "zhangls")
+    }
+}
+
+def eachMap(closure) {
+    def map = ['width': 1024, 'height': 768]
+    map.each {
+        closure(it.key, it.value)
+    }
+}
+
+
+task getGitVersion {
+    doLast {
+        def stdout = new ByteArrayOutputStream()
+        exec {
+            commandLine 'git', '--version'
+            standardOutput = stdout
+        }
+        def index = stdout.toString().indexOf("n") + 1
+        def version = stdout.toString().substring(index)
+        println "git ${version}"
+    }
+}
+
+task customTask1 {
+    doFirst {
+        println "customTask1.doFirst"
+    }
+
+    doLast {
+        println "customTask1:doLast"
+    }
+}
+
+tasks.create("customTask2") {
+    doFirst {
+        println "customerTask2:doFirst"
+    }
+    doLast {
+        println "customerTask2:doLast"
+    }
+}
+
+task hello {
+    doLast {
+        println "hello"
+    }
+}
+
+task world {
+    doLast {
+        println "world"
+    }
+}
+
+task multiTask {
+    dependsOn hello, world
+    doLast {
+        println "multiTask"
+    }
+}
+
+task customTask3(dependsOn: hello) {
+    doLast {
+        println "main"
+    }
+}
+
+ext.age = 18
+
+ext {
+    phone = 123456789
+    address = "福道大厦"
+}
+
+task customTask4 {
+    doLast {
+        println "我的年龄是${age}"
+        println "我的电话是${phone}"
+        println "我的地址是${address}"
+    }
+}
