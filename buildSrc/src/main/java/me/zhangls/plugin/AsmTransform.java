@@ -10,17 +10,6 @@ import com.android.build.api.transform.TransformInput;
 import com.android.build.api.transform.TransformInvocation;
 import com.android.build.api.transform.TransformOutputProvider;
 import com.android.build.gradle.internal.pipeline.TransformManager;
-import com.android.utils.FileUtils;
-
-import org.objectweb.asm.AnnotationVisitor;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Label;
-import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.MethodNode;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -35,6 +24,15 @@ import java.util.function.Predicate;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
+import org.apache.commons.io.FileUtils;
+import org.objectweb.asm.AnnotationVisitor;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Label;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodNode;
 
 import static org.objectweb.asm.Opcodes.ACC_FINAL;
 import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
@@ -53,14 +51,17 @@ import static org.objectweb.asm.Opcodes.PUTFIELD;
 import static org.objectweb.asm.Opcodes.RETURN;
 
 /**
- * Author: Zhang Lishun
- * Date: 2019/09/12.
+ * Author: Zhang Lishun Date: 2019/09/12.
  */
-public class MyTransform extends Transform {
+
+/**
+ * A Transform that processes intermediary build artifacts.
+ */
+public class AsmTransform extends Transform {
 
     @Override
     public String getName() {
-        return "ZhanglsTransform";
+        return "TransformAsm";
     }
 
     @Override
@@ -84,40 +85,56 @@ public class MyTransform extends Transform {
 //        AbstractTask abstractTask = (AbstractTask) (transformInvocation.getContext());
 //        Logger logger = abstractTask.getLogger();
 
+        //清空上一次的缓存(适用于无增加编译模式)
         transformInvocation.getOutputProvider().deleteAll();
 
+        //获取输入物料
         Collection<TransformInput> inputs = transformInvocation.getInputs();
+        //获取输出的产物的信息
         TransformOutputProvider outputProvider = transformInvocation.getOutputProvider();
 
+        //迭代输入源
         for (TransformInput input : inputs) {
-            for (JarInput jarInput : input.getJarInputs()) {
-
-                File destFile = outputProvider.getContentLocation(jarInput.getName(),
-                        jarInput.getContentTypes(), jarInput.getScopes(), Format.JAR);
-
-                System.out.println(jarInput.getFile().getAbsolutePath()
-                        + "->" + destFile.getAbsolutePath());
-                transform(jarInput.getFile(), destFile);
-//                FileUtils.copyFile(jarInput.getFile(), destFile);
-            }
-
+            //文件夹
             for (DirectoryInput directoryInput : input.getDirectoryInputs()) {
+                //目标文件
                 File destFile = outputProvider.getContentLocation(directoryInput.getName(),
-                        directoryInput.getContentTypes(), directoryInput.getScopes(), Format.DIRECTORY);
-
+                        directoryInput.getContentTypes(), directoryInput.getScopes(),
+                        Format.DIRECTORY);
+                //复制文件夹
+                FileUtils.copyDirectory(directoryInput.getFile(), destFile);
+                //打印源文件路径->目标文件路径
                 System.out.println(directoryInput.getFile().getAbsolutePath()
                         + "->" + destFile.getAbsolutePath());
-                FileUtils.copyDirectoryToDirectory(directoryInput.getFile(), destFile);
-//                info(directoryInput.getFile().getAbsolutePath() + "->" + destFile.getAbsolutePath());
+//              info(directoryInput.getFile().getAbsolutePath() + "->" + destFile.getAbsolutePath());
+            }
+            //Jar文件
+            for (JarInput jarInput : input.getJarInputs()) {
+                //获取目标文件的路径
+                File destFile = outputProvider.getContentLocation(jarInput.getName(),
+                        jarInput.getContentTypes(), jarInput.getScopes(), Format.JAR);
+                //修改字节码
+                transform(jarInput.getFile(), destFile);
+//              FileUtils.copyFile(jarInput.getFile(), destFile);
+                //打印源文件路径->目标文件路径
+                System.out.println(jarInput.getFile().getAbsolutePath()
+                        + "->" + destFile.getAbsolutePath());
             }
         }
     }
 
+    /**
+     * 修改字节码
+     *
+     * @param input 输入源
+     * @param output 输出产物
+     */
     private void transform(File input, File output) throws IOException {
         if (!input.isFile()) {
             return;
         }
 
+        //获取目标文件的后缀名
         int index = output.getName().lastIndexOf(".") + 1;
         String outputExt = output.getName().substring(index).toLowerCase();
 
@@ -142,11 +159,11 @@ public class MyTransform extends Transform {
                     int jarEntryIndex = jarEntry.getName().lastIndexOf(".");
                     String jarEntryExt = jarEntry.getName().substring(jarEntryIndex + 1);
 
+                    //复制class
                     if ("class".equals(jarEntryExt)) {
                         InputStream is = jarFile.getInputStream(jarEntry);
                         ByteArrayInputStream bais = new ByteArrayInputStream(transform(is));
                         copyTo(bais, outputStream);
-
                         is.close();
                     } else {
                         InputStream is = jarFile.getInputStream(jarEntry);
@@ -173,6 +190,14 @@ public class MyTransform extends Transform {
         }
     }
 
+    /**
+     * 复制
+     *
+     * @param inputStream 输入流
+     * @param outputStream 输出流
+     * @return 总的字节数
+     * @throws IOException 异常
+     */
     private Long copyTo(InputStream inputStream, OutputStream outputStream) throws IOException {
         long bytesCopied = 0;
         byte[] buffer = new byte[8 * 1024];
